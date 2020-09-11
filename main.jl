@@ -4,14 +4,15 @@ using CuArrays, Flux
 using Statistics
 using Base.Iterators: repeated
 
-wd = "C:\\Users\\lukas\\Downloads\\9232_29380_bundle_archive\\dataset2-master\\dataset2-master\\images"
-n = 1.0
-b_size = 140
+const wd = "C:\\Users\\lukas\\Downloads\\9232_29380_bundle_archive\\dataset2-master\\dataset2-master\\images"
+const n = 1.0
+const b_size = 160 #160 Max size
 
-X,Y= load_data2(wd,n,b_size,"TRAIN")
-X_t,Y_t= load_data2(wd,n,b_size,"TEST")
-n_batch = size(X)[1]
-m = Chain(
+@time X,Y= load_data2(wd,n,b_size,"TRAIN")
+@time X_t,Y_t= load_data2(wd,n,b_size,"TEST")
+const n_batch = size(X)[1]
+
+m = Chain( #Neural Network
     Conv((2,2), 3=>16 ,pad = (1,1),relu),
     MaxPool((2,2)),
     Conv((2,2), 16=>8 ,pad = (1,1),relu),
@@ -46,16 +47,13 @@ end
 
 @time println("Testing accuracy: ",test(X_t,Y_t))
 m = m |> gpu
-n_epochs = 30
+const n_epochs = 10
 println("Training Started")
 @time for i=1:n_epochs
     println("Epoch nr: $i")
-    @time for j=1:n_batch
-        a, b = CuArray(X[j]), CuArray(Y[j])
-        Flux.train!(loss, params(m), repeated((a,b),1), opt)
-        α, β, df = nothing, nothing, nothing
-        a, b = nothing, nothing
-        GC.gc()
+    @time @simd for j=1:n_batch #@simd speed up loop swpaping elements
+        α, β = CuArray(X[j]), CuArray(Y[j])
+        Flux.train!(loss, params(m), repeated((α,β),1), opt)
     end
 end
 println("Training ended")
