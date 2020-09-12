@@ -15,12 +15,20 @@ const n_batch = size(X)[1]
 m = Chain( #Neural Network
     Conv((2,2), 3=>16 ,pad = (1,1),relu),
     MaxPool((2,2)),
+    BatchNorm(16,relu),
+    Dropout(0.2),
     Conv((2,2), 16=>8 ,pad = (1,1),relu),
     MaxPool((2,2)),
+    BatchNorm(8,relu),
+    Dropout(0.2),
     Conv((2,2), 8=>4 ,pad = (1,1),relu),
     MaxPool((2,2)),
+    BatchNorm(4,relu),
+    Dropout(0.2),
     Conv((2,2), 4=>4 ,pad = (1,1),relu),
     MaxPool((2,2)),
+    BatchNorm(4,relu),
+    Dropout(0.2),
     x -> flatten(x),
     Dense(320,32),
     x -> relu.(x),
@@ -34,20 +42,24 @@ m = Chain( #Neural Network
 loss(x,y) = Flux.mse(m(x),y)
 opt = ADAM()
 accuracy(x, y) = mean(onecold(m(x)) .== onecold(y))
-function test(X,Y)
+
+function test(X,Y)# Test accuracy over batched set
     n,out = size(X)[1], 0.0
     for i=1:n out += accuracy(X[i],Y[i]) end
     floor((out/n)*1e3)/1e3
 end
-function ltest(X,Y)
+function ltest(X,Y) # Test loss val over batched set
     n,out = size(X)[1], 0.0
     for i=1:n out += loss(X[i],Y[i]) end
     floor((out/n)*1e3)/1e3
 end
 
+testmode!(m)
 @time println("Testing accuracy: ",test(X_t,Y_t))
+testmode!(m,false)
+
 m = m |> gpu
-const n_epochs = 10
+const n_epochs = 35
 println("Training Started")
 @time for i=1:n_epochs
     println("Epoch nr: $i")
@@ -58,5 +70,7 @@ println("Training Started")
 end
 println("Training ended")
 m = m |> cpu
+testmode!(m)
+
 @time println("Testing accuracy: ",test(X_t,Y_t))
 @time println("Trening accuracy: ",test(X,Y))
