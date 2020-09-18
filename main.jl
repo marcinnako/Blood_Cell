@@ -1,16 +1,20 @@
-include("data_loaders.jl")
-using Flux: onecold
-using CuArrays, Flux
-using Statistics
-using Base.Iterators: repeated
+@time begin
+    using Flux: onecold
+    using CuArrays, Flux
+    using Statistics
+    using Base.Iterators: repeated
+    using Plots
+    include("data_loaders.jl"),include("summary_function.jl")
+end
 
-const wd = "C:\\Users\\lukas\\Downloads\\9232_29380_bundle_archive\\dataset2-master\\dataset2-master\\images"
-const n = 1.0
-const b_size = 160 #160 Max size
+wd = "C:\\Users\\lukas\\Downloads\\9232_29380_bundle_archive\\dataset2-master\\dataset2-master\\images"
+n = 1.0
+b_size = 160 #160 Max size
 
-@time X,Y= load_data2(wd,n,b_size,"TRAIN")
-@time X_t,Y_t= load_data2(wd,n,b_size,"TEST")
-const n_batch = size(X)[1]
+@time X,Y= load_data(wd,n,b_size,"TRAIN")
+@time X_t,Y_t= load_data(wd,n,b_size,"TEST")
+n_batch = size(X)[1]
+n_testbatch = size(X_t)[1]
 
 m = Chain( #Neural Network
     Conv((2,2), 3=>16 ,pad = (1,1),relu),
@@ -38,7 +42,7 @@ m = Chain( #Neural Network
     x -> relu.(x),
     Dense(8,4),
     softmax)
-
+model = m
 loss(x,y) = Flux.mse(m(x),y)
 opt = ADAM()
 accuracy(x, y) = mean(onecold(m(x)) .== onecold(y))
@@ -55,20 +59,38 @@ function ltest(X,Y) # Test loss val over batched set
 end
 
 testmode!(m)
-@time println("Testing accuracy: ",test(X_t,Y_t))
+@time acc = [test(X_t,Y_t)]
+println("Testing accuracy: ",acc[1])
 testmode!(m,false)
 
 m = m |> gpu
-const n_epochs = 35
-println("Training Started")
-@time for i=1:n_epochs
-    println("Epoch nr: $i")
+n_epochs = 100
+max = 0.0
+@info "Training Started for $n_epochs epochs"
+@time for ep=1:n_epochs
+    global m
+    @info "Epoch nr: $ep"
     @time @simd for j=1:n_batch #@simd speed up loop swpaping elements
         α, β = CuArray(X[j]), CuArray(Y[j])
         Flux.train!(loss, params(m), repeated((α,β),1), opt)
     end
+    if(ep%4==0)
+        global max
+        global model
+        m = m |> cpu
+        testmode!(m)
+        δ = test(X_t,Y_t)
+        append!(acc,δ)
+        @info "Testing accuracy: " δ
+        if(max<δ)
+            max = δ
+            model = m
+        end
+        testmode!(m,false)
+        m = m |> gpu
+    end
 end
-println("Training ended")
+@info "Training ended"
 m = m |> cpu
 testmode!(m)
 
